@@ -98,6 +98,7 @@ aside h3{font:600 18px/1 "Barlow Condensed",Impact,sans-serif;margin:22px 0 8px}
 .authbox h2{font:700 30px/1 "Barlow Condensed",Impact,sans-serif;margin:0 0 6px}
 .authbox label{display:block;font-size:13px;color:var(--mute);margin-top:10px}
 .authbox input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:8px 10px;margin-top:2px}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
@@ -148,8 +149,7 @@ function toast(m){var t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(
 function note(m){$('#note').textContent=m||''}
 
 /* ---------- Supabase storage ---------- */
-var SUPABASE_URL='https://deeowwnpayzrmjbaevfv.supabase.co',
-    SUPABASE_KEY='sb_publishable_ifT79P47_ssOukkrnSlVVw_gjCyz842';
+var SUPABASE_URL='https://deeowwnpayzrmjbaevfv.supabase.co', SUPABASE_KEY='PASTE_YOUR_ANON_KEY';
 var sb=null,booted='';
 var toItem=function(r){return{id:r.id,tag:r.tag,serial:r.serial||'',type:r.type||'',make:r.make||'',model:r.model||'',site:r.site||'',area:r.area||'',hrs:+r.hrs,last:+r.last_service,interval:+r.service_interval,hist:r.hist||[]}};
 var fromItem=function(i){return{id:i.id,tag:i.tag,serial:i.serial||'',type:i.type||'',make:i.make||'',model:i.model||'',site:i.site||'',area:i.area||'',hrs:i.hrs,last_service:i.last,service_interval:i.interval,hist:i.hist||[]}};
@@ -569,13 +569,13 @@ function showAuth(m){$('#auth').hidden=false;$('#authMsg').textContent=m||'Use y
 async function boot(){
   var s=(await sb.auth.getSession()).data.session;
   if(!s){booted='';showAuth();return}
-  if(booted===s.user.id)return;
-  var p=(await sb.from('profiles').select('email,role').eq('email',s.user.email).maybeSingle()).data,role=p?p.role:'pending';
-  if(false){
-    showAuth('Your account is waiting for approval by an administrator. Try again later.');
-    return;
-}
-  booted=s.user.id;$('#auth').hidden=true;canClose=role==='admin';
+  if(booted===s.user.id)return;booted=s.user.id;
+  var q=await sb.from('profiles').select('email,role').eq('id',s.user.id).maybeSingle();
+  if(q.error){booted='';showAuth('Could not read your profile: '+q.error.message);return}
+  if(!q.data){booted='';showAuth('No profile was found for this account. Ask an administrator to approve it.');return}
+  var role=q.data.role;
+  if(role==='pending'){booted='';showAuth('Your account is waiting for approval by an administrator. Try again later.');return}
+  $('#auth').hidden=true;$('#authMsg').textContent='';canClose=role==='admin';
   $('#who').innerHTML=esc(s.user.email)+' ('+role+') <button class="btn" id="aOut">Sign out</button>';
   await loadAll();
   var t;sb.channel('mb').on('postgres_changes',{event:'*',schema:'public'},function(){clearTimeout(t);t=setTimeout(loadAll,400)}).subscribe();
@@ -591,7 +591,7 @@ document.addEventListener('click',async function(e){
   }else if(id==='aOut'){await sb.auth.signOut();location.reload()}
 });
 drawAll();
-if(!window.supabase||SUPABASE_URL.indexOf('PASTE')===0){showAuth('Setup needed: add your Supabase project URL and key near the top of the script.')}
+if(!window.supabase||SUPABASE_KEY.indexOf('PASTE')===0){showAuth('Setup needed: paste your Supabase anon key near the top of the script (search for PASTE_YOUR_ANON_KEY).')}
 else{sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);sb.auth.onAuthStateChange(function(ev){if(ev==='SIGNED_IN'||ev==='INITIAL_SESSION'||ev==='SIGNED_OUT')setTimeout(boot,0)})}
 </script>
 </body>
