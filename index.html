@@ -149,7 +149,7 @@ function toast(m){var t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(
 function note(m){$('#note').textContent=m||''}
 
 /* ---------- Supabase storage ---------- */
-var SUPABASE_URL='https://deeowwnpayzrmjbaevfv.supabase.co', SUPABASE_KEY='PASTE_YOUR_ANON_KEY';
+var SUPABASE_URL='https://deeowwnpayzrmjbaevfv.supabase.co', SUPABASE_KEY='sb_publishable_ifT79P47_ssOukkrnSlVVw_gjCyz842';
 var sb=null,booted='';
 var toItem=function(r){return{id:r.id,tag:r.tag,serial:r.serial||'',type:r.type||'',make:r.make||'',model:r.model||'',site:r.site||'',area:r.area||'',hrs:+r.hrs,last:+r.last_service,interval:+r.service_interval,hist:r.hist||[]}};
 var fromItem=function(i){return{id:i.id,tag:i.tag,serial:i.serial||'',type:i.type||'',make:i.make||'',model:i.model||'',site:i.site||'',area:i.area||'',hrs:i.hrs,last_service:i.last,service_interval:i.interval,hist:i.hist||[]}};
