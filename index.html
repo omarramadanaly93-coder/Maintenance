@@ -123,6 +123,7 @@ aside h3{font:600 18px/1 "Barlow Condensed",Impact,sans-serif;margin:22px 0 8px}
 <div class="filters">
   <input id="q" type="search" placeholder="Search tag, serial, model or site" aria-label="Search">
   <select id="fa" aria-label="Area"></select>
+  <select id="fp" aria-label="Project"></select>
   <select id="ft" aria-label="Equipment type"></select>
 </div>
 <div class="tw"><table><thead><tr><th>Equipment</th><th>Site</th><th>Hours now</th><th>Next service</th><th>Remaining</th><th>Status</th></tr></thead><tbody id="tb"></tbody></table><div id="empty"></div></div>
@@ -194,9 +195,9 @@ async function loadAll(){
 }
 /* ---------- drawing ---------- */
 function filtered(skipSt){
-  var q=$('#q').value.toLowerCase(),a=$('#fa').value,t=$('#ft').value;
+  var q=$('#q').value.toLowerCase(),a=$('#fa').value,t=$('#ft').value,pj=$('#fp').value;
   return items.filter(function(i){
-    if(a&&i.area!==a)return false;if(t&&i.type!==t)return false;
+    if(a&&i.area!==a)return false;if(pj&&i.site!==pj)return false;if(t&&i.type!==t)return false;
     if(!skipSt&&st&&status(i).s!==st)return false;
     return !q||[i.tag,i.serial,i.model,i.make,i.site,i.type].join(' ').toLowerCase().indexOf(q)>-1;
   });
@@ -213,9 +214,10 @@ function drawFleet(){
   $('#fleet').innerHTML=bar+leg;
 }
 function drawFilters(){
-  var cur={a:$('#fa').value,t:$('#ft').value};
+  var cur={a:$('#fa').value,t:$('#ft').value,p:$('#fp').value};
   function uniq(k){return Array.from(new Set(items.map(function(i){return i[k]}).filter(Boolean))).sort()}
   $('#fa').innerHTML='<option value="">All areas</option>'+uniq('area').map(function(v){return '<option'+(v===cur.a?' selected':'')+'>'+esc(v)+'</option>'}).join('');
+  $('#fp').innerHTML='<option value="">All projects</option>'+uniq('site').map(function(v){return '<option'+(v===cur.p?' selected':'')+'>'+esc(v)+'</option>'}).join('');
   $('#ft').innerHTML='<option value="">All equipment types</option>'+uniq('type').map(function(v){return '<option'+(v===cur.t?' selected':'')+'>'+esc(v)+'</option>'}).join('');
 }
 function drawTable(){
@@ -287,7 +289,7 @@ $('#dr').addEventListener('click',function(e){
 });
 $('#tb').addEventListener('click',function(e){var tr=e.target.closest('tr');if(!tr)return;open(items.find(function(x){return x.id===tr.dataset.id}))});
 $('#fleet').addEventListener('click',function(e){var b=e.target.closest('[data-st]');if(!b)return;st=st===b.dataset.st?'':b.dataset.st;drawFleet();drawTable()});
-['#q','#fa','#ft'].forEach(function(s){$(s).addEventListener('input',function(){drawFleet();drawTable()})});
+['#q','#fa','#fp','#ft'].forEach(function(s){$(s).addEventListener('input',function(){drawFleet();drawTable()})});
 $('#bAdd').onclick=function(){open({tag:'',serial:'',type:'',make:'',model:'',site:'',area:'',hrs:0,last:0,interval:250,hist:[]})};
 $('#bImp').onclick=function(){$('#file').click()};
 document.addEventListener('click',function(e){
