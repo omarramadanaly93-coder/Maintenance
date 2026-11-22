@@ -115,7 +115,7 @@ aside h3{font:600 18px/1 "Barlow Condensed",Impact,sans-serif;margin:22px 0 8px}
     <input type="file" id="pfile" accept=".xlsx,.xls,.csv" class="sr" tabindex="-1" aria-label="Choose parts file">
   </div>
 </header>
-<nav class="tabs" role="tablist"><button class="tab" role="tab" data-t="home" aria-selected="true">Home</button><button class="tab" role="tab" data-t="eq" aria-selected="false">Equipment</button><button class="tab" role="tab" data-t="req" aria-selected="false">Requests</button><button class="tab" role="tab" data-t="log" aria-selected="false">Maintenance log</button></nav>
+<nav class="tabs" role="tablist"><button class="tab" role="tab" data-t="home" aria-selected="true">Home</button><button class="tab" role="tab" data-t="eq" aria-selected="false">Equipment</button><button class="tab" role="tab" data-t="req" aria-selected="false">Requests</button><button class="tab" role="tab" data-t="log" aria-selected="false">Maintenance log</button><button class="tab" id="tUsers" role="tab" data-t="users" aria-selected="false" hidden>Users</button></nav>
 <div id="warn" class="warn" hidden role="alert"></div>
 <div id="vHome"></div>
 <div id="vEq" hidden>
@@ -130,6 +130,7 @@ aside h3{font:600 18px/1 "Barlow Condensed",Impact,sans-serif;margin:22px 0 8px}
 </div>
 <div id="vLog" hidden></div>
 <div id="vReq" hidden></div>
+<div id="vUsers" hidden></div>
 <p id="note"></p>
 </div>
 <div id="auth" class="auth" hidden><div class="authbox"><h2>Sign in</h2><p class="dim" id="authMsg"></p><label>Email<input id="aEmail" type="email" autocomplete="username"></label><label>Password<input id="aPass" type="password" autocomplete="current-password"></label><div class="row" style="margin-top:14px"><button class="btn pri" id="aIn">Sign in</button><button class="btn" id="aUp">Create account</button></div></div></div>
@@ -404,9 +405,9 @@ async function putK(k,o){
 }
 function setTab(t){
   tab=t;sel=null;formOpen=false;$('#dr').classList.remove('open');
-  $('#vHome').hidden=t!=='home';$('#vEq').hidden=t!=='eq';$('#vLog').hidden=t!=='log';$('#vReq').hidden=t!=='req';$('.btns').hidden=t!=='eq';
+  $('#vHome').hidden=t!=='home';$('#vEq').hidden=t!=='eq';$('#vLog').hidden=t!=='log';$('#vReq').hidden=t!=='req';$('#vUsers').hidden=t!=='users';$('.btns').hidden=t!=='eq';
   document.querySelectorAll('.tab').forEach(function(b){b.setAttribute('aria-selected',b.dataset.t===t)});
-  drawLog();drawReq();drawHome();
+  drawLog();drawReq();drawHome();if(t==='users')loadUsers();
 }
 function drawLog(){
   var v=$('#vLog');if(v.hidden)return;
@@ -566,6 +567,35 @@ document.addEventListener('input',function(e){
   else if(id==='rStep')e.target.dataset.u=1;
 });
 
+/* ---------- users (admin only) ---------- */
+var profiles=[];
+async function loadUsers(){
+  var r=await sb.from('profiles').select('id,email,role,created_at').order('created_at',{ascending:false});
+  if(r.error){toast('Could not load users: '+r.error.message);return}
+  profiles=r.data;
+  var n=profiles.filter(function(p){return p.role==='pending'}).length;$('#tUsers').textContent='Users'+(n?' ('+n+')':'');
+  drawUsers();
+}
+function drawUsers(){
+  var v=$('#vUsers');if(v.hidden)return;
+  var rank={pending:0,user:1,admin:2},list=profiles.slice().sort(function(a,b){return rank[a.role]-rank[b.role]||(a.email||'').localeCompare(b.email||'')});
+  var btn=function(id,rl,label,pri){return '<button class="btn'+(pri?' pri':'')+'" data-ur="'+esc(id)+'" data-rl="'+rl+'">'+label+'</button> '};
+  v.innerHTML='<p class="dim" style="margin:0 0 10px">New accounts wait here until you approve them. Approve gives normal access. Administrators can also close and delete requests, import data and approve users.</p><div class="tw"><table><thead><tr><th>Email</th><th>Joined</th><th>Role</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(p){
+    var me=p.id===booted,pc=p.role==='pending'?'soon':p.role==='user'?'ok':'';
+    var act=me?'<span class="dim">This is you</span>':p.role==='pending'?btn(p.id,'user','Approve',1)+btn(p.id,'admin','Make admin'):p.role==='user'?btn(p.id,'admin','Make admin')+btn(p.id,'pending','Remove access'):btn(p.id,'user','Make regular user');
+    return '<tr style="cursor:default"><td>'+esc(p.email)+'</td><td class="dim">'+esc((p.created_at||'').slice(0,10))+'</td><td><span class="pill '+pc+'"'+(p.role==='admin'?' style="background:var(--ink);color:var(--bg)"':'')+'>'+esc(p.role)+'</span></td><td>'+act+'</td></tr>'}).join(''):'<tr style="cursor:default"><td colspan="4" class="dim" style="padding:28px">No accounts yet.</td></tr>')+'</tbody></table></div>';
+}
+async function setRole(id,rl){
+  if(id===booted)return;
+  if(rl==='admin'&&!confirm('Make this person an administrator? They will be able to close and delete requests, import data and approve users.'))return;
+  if(rl==='pending'&&!confirm('Remove access for this person?'))return;
+  var r=await sb.from('profiles').update({role:rl}).eq('id',id).select();
+  if(r.error||!r.data||!r.data.length){toast('Could not change the role: '+(r.error?r.error.message:'no permission'));return}
+  toast('Role updated');loadUsers();
+}
+document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-ur]');if(b)setRole(b.dataset.ur,b.dataset.rl)});
+
 /* ---------- start: sign in, then load ---------- */
 function showAuth(m){$('#auth').hidden=false;$('#authMsg').textContent=m||'Use your company email and password.'}
 async function boot(){
@@ -577,7 +607,7 @@ async function boot(){
   if(!q.data){booted='';showAuth('No profile was found for this account. Ask an administrator to approve it.');return}
   var role=q.data.role;
   if(role==='pending'){booted='';showAuth('Your account is waiting for approval by an administrator. Try again later.');return}
-  $('#auth').hidden=true;$('#authMsg').textContent='';canClose=role==='admin';
+  $('#auth').hidden=true;$('#authMsg').textContent='';canClose=role==='admin';if(role==='admin'){$('#tUsers').hidden=false;loadUsers()}
   $('#who').innerHTML=esc(s.user.email)+' ('+role+') <button class="btn" id="aOut">Sign out</button>';
   await loadAll();
   var t;sb.channel('mb').on('postgres_changes',{event:'*',schema:'public'},function(){clearTimeout(t);t=setTimeout(loadAll,400)}).subscribe();
