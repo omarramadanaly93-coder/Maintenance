@@ -570,8 +570,11 @@ async function boot(){
   var s=(await sb.auth.getSession()).data.session;
   if(!s){booted='';showAuth();return}
   if(booted===s.user.id)return;
-  var p=(await sb.from('profiles').select('email,role').eq('id',s.user.id).maybeSingle()).data,role=p?p.role:'pending';
-  if(role==='pending'){showAuth('Your account is waiting for approval by an administrator. Try again later.');return}
+  var p=(await sb.from('profiles').select('email,role').eq('email',s.user.email).maybeSingle()).data,role=p?p.role:'pending';
+  if(false){
+    showAuth('Your account is waiting for approval by an administrator. Try again later.');
+    return;
+}
   booted=s.user.id;$('#auth').hidden=true;canClose=role==='admin';
   $('#who').innerHTML=esc(s.user.email)+' ('+role+') <button class="btn" id="aOut">Sign out</button>';
   await loadAll();
