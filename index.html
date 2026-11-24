@@ -132,6 +132,7 @@ aside h3{font:600 18px/1 "Barlow Condensed",Impact,sans-serif;margin:22px 0 8px}
 <div id="vReq" hidden></div>
 <div id="vUsers" hidden></div>
 <p id="note"></p>
+<p class="dim" style="font-size:12px;margin:4px 0">Page version 24 Nov, build d</p>
 </div>
 <div id="auth" class="auth" hidden><div class="authbox"><h2>Sign in</h2><p class="dim" id="authMsg"></p><label>Email<input id="aEmail" type="email" autocomplete="username"></label><label>Password<input id="aPass" type="password" autocomplete="current-password"></label><div class="row" style="margin-top:14px"><button class="btn pri" id="aIn">Sign in</button><button class="btn" id="aUp">Create account</button></div></div></div>
 <aside id="dr" aria-label="Machine details"></aside>
@@ -430,24 +431,26 @@ var tagLink=function(t){return '<button class="lnk" data-tag="'+esc(t)+'">'+esc(
 function jobOf(r){return jobs.find(function(x){return x.reqId===r.id})}
 function reqStatus(r){var jb=jobOf(r),c=closed[r.id];
   return '<span class="pill '+(c?'ok':'soon')+'">'+(c?'Closed':'Open')+'</span>'+(c&&c.at?'<div class="dim">'+esc(c.at)+'</div>':'')+(jb?'<div class="dim">Job Order '+jb.no+': '+esc(jb.status)+'</div>':'')}
-function reqAct(r){if(closed[r.id])return '';
+function reqAct(r){if(closed[r.id])return canClose?'<button class="btn" data-ro="'+esc(r.id)+'">Open request</button>':'';
   var b=r.due?'<button class="btn" data-nt="'+esc(r.id)+'">Email</button> ':'';
   return b+(canClose?'<button class="btn pri" data-cl="'+esc(r.id)+'">Close request</button>':'<span class="dim">Only an authorised user can close it</span>')}
 function closeFlow(id){
   var r=reqs.find(function(x){return x.id===id});if(!r)return;
   if(!r.due){closeReq(id);formOpen=false;$('#dr').classList.remove('open');return}
   var jb=jobOf(r);
+  if(jb&&jb.status==='Done'){formOpen=false;$('#dr').classList.remove('open');closeReq(id);return}
   jobForm(jb?{job:jb}:{tag:r.tag,notes:'Request '+r.no+': '+r.desc,reqId:r.id,step:r.step,hrs:r.e});
 }
+function fail(m){toast(m);var w=$('#warn');w.hidden=false;w.textContent=m}
 async function closeReq(id,q){
   var r=await sb.rpc('close_request',{p_id:id});
-  if(r.error){toast('Could not close the request: '+r.error.message);return}
-  closed[id]={at:today()};drawAll();if(!q)toast('Request closed');
+  if(r.error){fail('Could not close the request: '+r.error.message);return}
+  $('#warn').hidden=true;closed[id]={at:today()};drawAll();if(!q)toast('Request closed');
 }
 async function reopenReq(id){
   var r=await sb.rpc('reopen_request',{p_id:id});
-  if(r.error){toast('Could not reopen the request: '+r.error.message);return}
-  delete closed[id];drawAll();reqView(id);toast('Request reopened');
+  if(r.error){fail('Could not reopen the request: '+r.error.message);return}
+  delete closed[id];drawAll();if($('#dr').classList.contains('open'))reqView(id);toast('Request reopened');
 }
 function reqView(id){
   var r=reqs.find(function(x){return x.id===id});if(!r)return;
@@ -460,7 +463,7 @@ function reqView(id){
 async function delReq(id){
   rDel='';
   var r=await sb.rpc('delete_request',{p_id:id});
-  if(r.error){toast('Could not delete the request: '+r.error.message);return}
+  if(r.error){fail('Could not delete the request: '+r.error.message);return}
   removed[id]={at:today()};formOpen=false;$('#dr').classList.remove('open');drawAll();toast('Request deleted');
 }
 function mailText(o,mc){
