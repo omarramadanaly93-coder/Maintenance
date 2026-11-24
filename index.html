@@ -152,7 +152,7 @@ function note(m){$('#note').textContent=m||''}
 
 /* ---------- Supabase storage ---------- */
 var SUPABASE_URL='https://deeowwnpayzrmjbaevfv.supabase.co', SUPABASE_KEY='sb_publishable_ifT79P47_ssOukkrnSlVVw_gjCyz842';
-var sb=null,booted='';
+var sb=null,booted='',lastLoad=0;
 var toItem=function(r){return{id:r.id,tag:r.tag,serial:r.serial||'',type:r.type||'',make:r.make||'',model:r.model||'',site:r.site||'',area:r.area||'',hrs:+r.hrs,last:+r.last_service,interval:+r.service_interval,hist:r.hist||[]}};
 var fromItem=function(i){return{id:i.id,tag:i.tag,serial:i.serial||'',type:i.type||'',make:i.make||'',model:i.model||'',site:i.site||'',area:i.area||'',hrs:i.hrs,last_service:i.last,service_interval:i.interval,hist:i.hist||[]}};
 var toReq=function(r){return{id:r.id,no:r.request_no,tag:r.equipment_tag,desc:r.description||'',pri:r.priority,by:r.requested_by||'',date:r.req_date,status:'Open',s:+r.start_meter,e:+r.end_meter,step:r.service_step||0,due:!!r.maintenance_due,job:r.job_no}};
@@ -191,7 +191,7 @@ async function loadAll(){
     items=R[0].map(function(r){var i=toItem(r),m=pm[r.id];if(m){i.parts={};Object.keys(m).forEach(function(st){i.parts[st]=m[st].sort(function(a,b){return a[0]-b[0]}).map(function(x){return x[1]})})}return fix(i)});
     closed={};removed={};
     reqs=R[2].map(function(r){if(r.closed_at)closed[r.id]={at:r.closed_at};if(r.deleted_at)removed[r.id]={at:r.deleted_at};return toReq(r)});
-    jobs=R[3].map(toJob);loaded=true;note('');drawAll();
+    jobs=R[3].map(toJob);lastLoad=Date.now();loaded=true;note('');drawAll();
   }catch(e){loaded=true;note('Could not load the data: '+(e.message||e));drawAll()}
 }
 /* ---------- drawing ---------- */
@@ -215,11 +215,13 @@ function drawFleet(){
   $('#fleet').innerHTML=bar+leg;
 }
 function drawFilters(){
-  var cur={a:$('#fa').value,t:$('#ft').value,p:$('#fp').value};
-  function uniq(k){return Array.from(new Set(items.map(function(i){return i[k]}).filter(Boolean))).sort()}
-  $('#fa').innerHTML='<option value="">All areas</option>'+uniq('area').map(function(v){return '<option'+(v===cur.a?' selected':'')+'>'+esc(v)+'</option>'}).join('');
-  $('#fp').innerHTML='<option value="">All projects</option>'+uniq('site').map(function(v){return '<option'+(v===cur.p?' selected':'')+'>'+esc(v)+'</option>'}).join('');
-  $('#ft').innerHTML='<option value="">All equipment types</option>'+uniq('type').map(function(v){return '<option'+(v===cur.t?' selected':'')+'>'+esc(v)+'</option>'}).join('');
+  var a=$('#fa').value,p=$('#fp').value,t=$('#ft').value;
+  var uniq=function(list,k){return Array.from(new Set(list.map(function(i){return i[k]}).filter(Boolean))).sort()};
+  var areas=uniq(items,'area');if(a&&areas.indexOf(a)<0)a='';
+  var inA=items.filter(function(i){return !a||i.area===a}),sites=uniq(inA,'site');if(p&&sites.indexOf(p)<0)p='';
+  var inP=inA.filter(function(i){return !p||i.site===p}),types=uniq(inP,'type');if(t&&types.indexOf(t)<0)t='';
+  var fill=function(sel,all,vals,cur){$(sel).innerHTML='<option value="">'+all+'</option>'+vals.map(function(v){return '<option'+(v===cur?' selected':'')+'>'+esc(v)+'</option>'}).join('')};
+  fill('#fa','All areas',areas,a);fill('#fp','All projects',sites,p);fill('#ft','All equipment types',types,t);
 }
 function drawTable(){
   var rows=filtered(false).map(function(i){var s=status(i);return{i:i,s:s}}).sort(function(a,b){return a.s.rem-b.s.rem});
@@ -275,6 +277,7 @@ function readDetails(base){
 }
 $('#dr').addEventListener('click',function(e){
   var id=e.target.id;if(!id)return;var i=sel;
+  if(!canClose&&(id==='dSetH'||id==='dLog'||id==='dSave'||id==='dDel')){toast('Only administrators can change equipment data');return}
   if(id==='dClose'){sel=null;drawDrawer()}
   else if(id==='dSetH'){var j=Object.assign({},i,{hrs:num($('#dHrs').value)});put(j).then(function(){sel=j;drawAll();drawDrawer();toast('Hours saved')})}
   else if(id==='dLog'){var h=num($('#dSh').value),j2=Object.assign({},i);j2.last=h;j2.hrs=Math.max(i.hrs,h);
@@ -290,7 +293,7 @@ $('#dr').addEventListener('click',function(e){
 });
 $('#tb').addEventListener('click',function(e){var tr=e.target.closest('tr');if(!tr)return;open(items.find(function(x){return x.id===tr.dataset.id}))});
 $('#fleet').addEventListener('click',function(e){var b=e.target.closest('[data-st]');if(!b)return;st=st===b.dataset.st?'':b.dataset.st;drawFleet();drawTable()});
-['#q','#fa','#fp','#ft'].forEach(function(s){$(s).addEventListener('input',function(){drawFleet();drawTable()})});
+['#q','#fa','#fp','#ft'].forEach(function(s){$(s).addEventListener('input',function(){drawFilters();drawFleet();drawTable()})});
 $('#bAdd').onclick=function(){open({tag:'',serial:'',type:'',make:'',model:'',site:'',area:'',hrs:0,last:0,interval:250,hist:[]})};
 $('#bImp').onclick=function(){$('#file').click()};
 document.addEventListener('click',function(e){
@@ -407,11 +410,11 @@ function setTab(t){
   tab=t;sel=null;formOpen=false;$('#dr').classList.remove('open');
   $('#vHome').hidden=t!=='home';$('#vEq').hidden=t!=='eq';$('#vLog').hidden=t!=='log';$('#vReq').hidden=t!=='req';$('#vUsers').hidden=t!=='users';$('.btns').hidden=t!=='eq';
   document.querySelectorAll('.tab').forEach(function(b){b.setAttribute('aria-selected',b.dataset.t===t)});
-  drawLog();drawReq();drawHome();if(t==='users')loadUsers();
+  drawLog();drawReq();drawHome();if(t==='users')loadUsers();else if(sb&&booted&&Date.now()-lastLoad>5000)loadAll();
 }
 function drawLog(){
   var v=$('#vLog');if(v.hidden)return;
-  if(!$('#lq'))v.innerHTML='<div class="filters"><input id="lq" type="search" placeholder="Search job order, machine, part or technician" aria-label="Search job orders"></div><div class="tw"><table><thead><tr><th>Job order</th><th>Machine</th><th>Service</th><th>Hours</th><th>Parts changed</th><th>Requested by</th><th>Done by</th><th>Status</th></tr></thead><tbody id="lb"></tbody></table></div>';
+  if(!$('#lq'))v.innerHTML='<div class="filters"><input id="lq" type="search" placeholder="Search job order, machine, part or technician" aria-label="Search job orders"><button class="btn" id="lExp">Export CSV</button></div><div class="tw"><table><thead><tr><th>Job order</th><th>Machine</th><th>Service</th><th>Hours</th><th>Parts changed</th><th>Requested by</th><th>Done by</th><th>Status</th></tr></thead><tbody id="lb"></tbody></table></div>';
   var q=$('#lq').value.toLowerCase();
   var rows=jobs.filter(function(j){return j.status==='Done'&&(!q||('job order '+j.no+' '+j.tag+' '+j.by+' '+(j.parts||[]).join(' ')).toLowerCase().indexOf(q)>-1)}).sort(function(a,b){return b.no-a.no});
   $('#lb').innerHTML=rows.length?rows.map(function(j){return '<tr style="cursor:default"><td><span class="tag">Job Order '+j.no+'</span><span class="dim">'+esc(j.date)+'</span></td><td>'+tagLink(j.tag)+'<div class="dim">'+esc(j.type)+'</div></td><td>'+(j.step?fmt(j.step)+' h service<div class="dim">Cycle '+Math.max(1,Math.floor((Math.round(j.hrs/250)-1)/8)+1)+'</div>':'Other work')+'</td><td><span class="num">'+fmt(j.hrs)+'</span> <span class="dim">h</span></td><td>'+((j.parts||[]).map(esc).join('<br>')||'<span class="dim">None</span>')+(j.notes?'<div class="dim">'+esc(j.notes)+'</div>':'')+'</td><td>'+esc((reqs.find(function(x){return x.id===j.reqId})||{}).by||'')+'</td><td>'+esc(j.by)+'</td><td><span class="pill '+(j.status==='Done'?'ok':'soon')+'">'+esc(j.status)+'</span>'+(j.status==='Open'?'<br><button class="btn" style="margin-top:6px" data-jo="'+esc(j.id)+'">Complete</button>':'')+'</td></tr>'}).join(''):'<tr style="cursor:default"><td colspan="8" class="dim" style="padding:28px">No job orders yet. Create one when a machine is serviced, or from a request.</td></tr>';
@@ -437,16 +440,21 @@ function closeFlow(id){
   jobForm(jb?{job:jb}:{tag:r.tag,notes:'Request '+r.no+': '+r.desc,reqId:r.id,step:r.step,hrs:r.e});
 }
 async function closeReq(id,q){
-  var r=await sb.from('maintenance_requests').update({closed_at:today()}).eq('id',id);
-  if(r.error){toast('Only administrators can close requests');return}
+  var r=await sb.from('maintenance_requests').update({closed_at:today()}).eq('id',id).select();
+  if(r.error||!r.data||!r.data.length){toast('Only administrators can close requests');return}
   closed[id]={at:today()};drawAll();if(!q)toast('Request closed');
+}
+async function reopenReq(id){
+  var r=await sb.from('maintenance_requests').update({closed_at:null}).eq('id',id).select();
+  if(r.error||!r.data||!r.data.length){toast('Only administrators can reopen requests');return}
+  delete closed[id];drawAll();reqView(id);toast('Request reopened');
 }
 function reqView(id){
   var r=reqs.find(function(x){return x.id===id});if(!r)return;
   var c=closed[r.id],row=function(k,v){return '<tr><td class="dim" style="padding:6px 12px 6px 0;border:0;white-space:nowrap">'+k+'</td><td style="padding:6px 0;border:0">'+v+'</td></tr>'};
   openForm('<div class="dh"><h2>Request '+r.no+'</h2><button class="btn" id="fClose">Close</button></div><div style="margin-top:8px">'+reqStatus(r)+'</div>'+
   '<table style="min-width:0;margin-top:10px"><tbody>'+row('Machine',tagLink(r.tag))+row('Requested by',esc(r.by||'Not entered'))+row('Date',esc(r.date))+row('Priority',esc(r.pri))+(r.e||r.s?row('Meters',fmt(r.s)+' to '+fmt(r.e)+' ('+fmt(r.e-r.s)+' h)'):'')+(r.due?row('Service',r.step?fmt(r.step)+' h service':'To be decided'):'')+row('Issue',esc(r.desc||'None'))+'</tbody></table>'+
-  '<div class="row" style="margin-top:14px">'+(r.due&&!c?'<button class="btn" data-nt="'+esc(r.id)+'">Email</button>':'')+(!c&&canClose?'<button class="btn pri" data-cl="'+esc(r.id)+'">Close request</button>':'')+(canClose?'<button class="btn dng" data-rd="'+esc(r.id)+'">'+(rDel===r.id?'Confirm delete':'Delete request')+'</button>':'')+'</div>'+
+  '<div class="row" style="margin-top:14px">'+(r.due&&!c?'<button class="btn" data-nt="'+esc(r.id)+'">Email</button>':'')+(!c&&canClose?'<button class="btn pri" data-cl="'+esc(r.id)+'">Close request</button>':'')+(c&&canClose?'<button class="btn pri" data-ro="'+esc(r.id)+'">Open request</button>':'')+(canClose?'<button class="btn dng" data-rd="'+esc(r.id)+'">'+(rDel===r.id?'Confirm delete':'Delete request')+'</button>':'')+'</div>'+
   (canClose?'':'<p class="dim">Only an authorised user can close or delete requests.</p>'));
 }
 async function delReq(id){
@@ -500,7 +508,9 @@ function saveJob(){
   var step=num(val('#jStep')),h=num(val('#jHrs')),d=val('#jDate'),done=val('#jSt')==='Done',lg=$('#jLog').checked,rid=jReq,no=jNo,pv=jPrev;
   var o={id:jId||'jo'+Date.now(),no:no,tag:tag,type:i.type,step:step,hrs:h,date:d,by:val('#jBy'),parts:val('#jParts').split('\n').map(function(s){return s.trim()}).filter(Boolean),notes:val('#jNotes'),status:done?'Done':'Open',reqId:rid};
   putK('jobs',o).then(function(){
-    if(step&&done&&lg&&pv!=='Done')put(fix(Object.assign({},i,{last:h,hrs:Math.max(i.hrs,h),hist:[{h:h,d:d,n:'Job Order '+no+' ('+step+' h service)'}].concat(i.hist)})));
+    var rq=reqs.find(function(x){return x.id===rid}),i2=Object.assign({},i,{hrs:Math.max(i.hrs,h,(rq&&rq.e)||0)});
+    if(step&&done&&lg&&pv!=='Done'){i2.last=h;i2.hist=[{h:h,d:d,n:'Job Order '+no+' ('+step+' h service)'}].concat(i.hist)}
+    put(fix(i2));
     var r=reqs.find(function(x){return x.id===rid});
     if(r&&r.job!==no)putK('reqs',Object.assign({},r,{job:no}));
     formOpen=false;$('#dr').classList.remove('open');toast('Job Order '+no+' saved and the request was closed.');if(rid)closeReq(rid,1);
@@ -530,7 +540,7 @@ function saveReq(){
   var o={id:'rq'+Date.now(),no:rNo,tag:tag,desc:desc||(due?'Scheduled service due':''),pri:val('#rPri'),by:val('#rBy'),date:today(),status:'Open',s:s,e:e,step:num(val('#rStep')),due:due};
   var jn=nextNo(jobs),stp=o.step,j={id:'jo'+Date.now(),no:jn,tag:tag,type:mc.type,step:stp,hrs:e,date:today(),by:'',parts:((mc.parts&&mc.parts[stp])||[]).slice(),notes:'Request '+o.no+': '+o.desc,status:'Open',reqId:o.id};
   if(!due){putK('reqs',o).then(function(){formOpen=false;$('#dr').classList.remove('open');toast('Request '+o.no+' logged. Under 250 h, so no maintenance was started.')});return}
-  putK('reqs',o).then(function(){put(fix(Object.assign({},mc,{hrs:Math.max(mc.hrs,e)})));toast('Request '+o.no+' submitted. Hours now updated to '+fmt(e)+'.');notify(o,mc)});
+  putK('reqs',o).then(function(){toast('Request '+o.no+' submitted. The hours now update when an administrator closes the request.');notify(o,mc)});
 }
 document.addEventListener('click',function(e){
   var t=e.target,id=t.id;
@@ -553,6 +563,7 @@ document.addEventListener('click',function(e){
   else if(id==='fClose'){formOpen=false;$('#dr').classList.remove('open')}
   else if(id==='jSave')saveJob();
   else if(id==='rSave')saveReq();
+  else if(t.dataset&&t.dataset.ro)reopenReq(t.dataset.ro);
   else if(t.dataset&&t.dataset.rd){if(rDel===t.dataset.rd)delReq(t.dataset.rd);else{rDel=t.dataset.rd;reqView(t.dataset.rd)}}
   else if(t.closest&&t.closest('[data-rv]')){rDel='';reqView(t.closest('[data-rv]').dataset.rv)}
 });
@@ -566,6 +577,20 @@ document.addEventListener('input',function(e){
   else if(id==='rS'||id==='rE'){e.target.dataset.u=1;rCalc()}
   else if(id==='rStep')e.target.dataset.u=1;
 });
+
+/* ---------- maintenance log export ---------- */
+function exportLog(){
+  var q=($('#lq')?$('#lq').value:'').toLowerCase();
+  var rows=jobs.filter(function(j){return j.status==='Done'&&(!q||('job order '+j.no+' '+j.tag+' '+j.by+' '+(j.parts||[]).join(' ')).toLowerCase().indexOf(q)>-1)}).sort(function(a,b){return b.no-a.no});
+  if(!rows.length){toast('No job orders to export');return}
+  var qt=function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'};
+  var head=['Job order','Date','Machine tag','Equipment type','Service step (h)','Cycle','Hours at service','Parts changed','Requested by','Done by','Notes','Status'];
+  var lines=[head.map(qt).join(',')].concat(rows.map(function(j){
+    var rq=reqs.find(function(x){return x.id===j.reqId})||{};
+    return ['Job Order '+j.no,j.date,j.tag,j.type,j.step||'',j.step?Math.max(1,Math.floor((Math.round(j.hrs/250)-1)/8)+1):'',j.hrs,(j.parts||[]).join('; '),rq.by||'',j.by,j.notes,j.status].map(qt).join(',')}));
+  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv'}));a.download='maintenance-log.csv';a.click();
+}
+document.addEventListener('click',function(e){if(e.target.id==='lExp')exportLog()});
 
 /* ---------- users (admin only) ---------- */
 var profiles=[];
@@ -607,7 +632,7 @@ async function boot(){
   if(!q.data){booted='';showAuth('No profile was found for this account. Ask an administrator to approve it.');return}
   var role=q.data.role;
   if(role==='pending'){booted='';showAuth('Your account is waiting for approval by an administrator. Try again later.');return}
-  $('#auth').hidden=true;$('#authMsg').textContent='';canClose=role==='admin';if(role==='admin'){$('#tUsers').hidden=false;loadUsers()}
+  $('#auth').hidden=true;$('#authMsg').textContent='';canClose=role==='admin';if(!canClose){['#bAdd','#bImp','#bPar'].forEach(function(x){$(x).hidden=true})}if(role==='admin'){$('#tUsers').hidden=false;loadUsers()}
   $('#who').innerHTML=esc(s.user.email)+' ('+role+') <button class="btn" id="aOut">Sign out</button>';
   await loadAll();
   var t;sb.channel('mb').on('postgres_changes',{event:'*',schema:'public'},function(){clearTimeout(t);t=setTimeout(loadAll,400)}).subscribe();
