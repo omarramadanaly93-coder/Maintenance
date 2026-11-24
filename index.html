@@ -440,13 +440,13 @@ function closeFlow(id){
   jobForm(jb?{job:jb}:{tag:r.tag,notes:'Request '+r.no+': '+r.desc,reqId:r.id,step:r.step,hrs:r.e});
 }
 async function closeReq(id,q){
-  var r=await sb.from('maintenance_requests').update({closed_at:today()}).eq('id',id).select();
-  if(r.error||!r.data||!r.data.length){toast('Only administrators can close requests');return}
+  var r=await sb.rpc('close_request',{p_id:id});
+  if(r.error){toast('Could not close the request: '+r.error.message);return}
   closed[id]={at:today()};drawAll();if(!q)toast('Request closed');
 }
 async function reopenReq(id){
-  var r=await sb.from('maintenance_requests').update({closed_at:null}).eq('id',id).select();
-  if(r.error||!r.data||!r.data.length){toast('Only administrators can reopen requests');return}
+  var r=await sb.rpc('reopen_request',{p_id:id});
+  if(r.error){toast('Could not reopen the request: '+r.error.message);return}
   delete closed[id];drawAll();reqView(id);toast('Request reopened');
 }
 function reqView(id){
@@ -459,8 +459,8 @@ function reqView(id){
 }
 async function delReq(id){
   rDel='';
-  var r=await sb.from('maintenance_requests').update({deleted_at:today()}).eq('id',id);
-  if(r.error){toast('Only administrators can delete requests');return}
+  var r=await sb.rpc('delete_request',{p_id:id});
+  if(r.error){toast('Could not delete the request: '+r.error.message);return}
   removed[id]={at:today()};formOpen=false;$('#dr').classList.remove('open');drawAll();toast('Request deleted');
 }
 function mailText(o,mc){
@@ -513,7 +513,7 @@ function saveJob(){
     put(fix(i2));
     var r=reqs.find(function(x){return x.id===rid});
     if(r&&r.job!==no)putK('reqs',Object.assign({},r,{job:no}));
-    formOpen=false;$('#dr').classList.remove('open');toast('Job Order '+no+' saved and the request was closed.');if(rid)closeReq(rid,1);
+    formOpen=false;$('#dr').classList.remove('open');toast('Job Order '+no+' saved.');if(rid)closeReq(rid);
   });
 }
 function sugStep(e){return STEPS[(((Math.floor(e/250)-1)%8)+8)%8]}
