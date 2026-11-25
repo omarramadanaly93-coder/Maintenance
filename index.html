@@ -132,7 +132,7 @@ aside h3{font:600 18px/1 "Barlow Condensed",Impact,sans-serif;margin:22px 0 8px}
 <div id="vReq" hidden></div>
 <div id="vUsers" hidden></div>
 <p id="note"></p>
-<p class="dim" style="font-size:12px;margin:4px 0">Page version 24 Nov, build d</p>
+<p class="dim" style="font-size:12px;margin:4px 0">Page version 24 Nov, build f</p>
 </div>
 <div id="auth" class="auth" hidden><div class="authbox"><h2>Sign in</h2><p class="dim" id="authMsg"></p><label>Email<input id="aEmail" type="email" autocomplete="username"></label><label>Password<input id="aPass" type="password" autocomplete="current-password"></label><div class="row" style="margin-top:14px"><button class="btn pri" id="aIn">Sign in</button><button class="btn" id="aUp">Create account</button></div></div></div>
 <aside id="dr" aria-label="Machine details"></aside>
@@ -417,7 +417,7 @@ function drawLog(){
   var v=$('#vLog');if(v.hidden)return;
   if(!$('#lq'))v.innerHTML='<div class="filters"><input id="lq" type="search" placeholder="Search job order, machine, part or technician" aria-label="Search job orders"><button class="btn" id="lExp">Export CSV</button></div><div class="tw"><table><thead><tr><th>Job order</th><th>Machine</th><th>Service</th><th>Hours</th><th>Parts changed</th><th>Requested by</th><th>Done by</th><th>Status</th></tr></thead><tbody id="lb"></tbody></table></div>';
   var q=$('#lq').value.toLowerCase();
-  var rows=jobs.filter(function(j){return j.status==='Done'&&(!q||('job order '+j.no+' '+j.tag+' '+j.by+' '+(j.parts||[]).join(' ')).toLowerCase().indexOf(q)>-1)}).sort(function(a,b){return b.no-a.no});
+  var rows=jobs.filter(function(j){return jobVisible(j)&&(!q||('job order '+j.no+' '+j.tag+' '+j.by+' '+(j.parts||[]).join(' ')).toLowerCase().indexOf(q)>-1)}).sort(function(a,b){return b.no-a.no});
   $('#lb').innerHTML=rows.length?rows.map(function(j){return '<tr style="cursor:default"><td><span class="tag">Job Order '+j.no+'</span><span class="dim">'+esc(j.date)+'</span></td><td>'+tagLink(j.tag)+'<div class="dim">'+esc(j.type)+'</div></td><td>'+(j.step?fmt(j.step)+' h service<div class="dim">Cycle '+Math.max(1,Math.floor((Math.round(j.hrs/250)-1)/8)+1)+'</div>':'Other work')+'</td><td><span class="num">'+fmt(j.hrs)+'</span> <span class="dim">h</span></td><td>'+((j.parts||[]).map(esc).join('<br>')||'<span class="dim">None</span>')+(j.notes?'<div class="dim">'+esc(j.notes)+'</div>':'')+'</td><td>'+esc((reqs.find(function(x){return x.id===j.reqId})||{}).by||'')+'</td><td>'+esc(j.by)+'</td><td><span class="pill '+(j.status==='Done'?'ok':'soon')+'">'+esc(j.status)+'</span>'+(j.status==='Open'?'<br><button class="btn" style="margin-top:6px" data-jo="'+esc(j.id)+'">Complete</button>':'')+'</td></tr>'}).join(''):'<tr style="cursor:default"><td colspan="8" class="dim" style="padding:28px">No job orders yet. Create one when a machine is serviced, or from a request.</td></tr>';
 }
 function drawReq(){
@@ -428,9 +428,14 @@ function drawReq(){
 var closed={},removed={},canClose=false,rDel='';
 function vreqs(){return reqs.filter(function(r){return !removed[r.id]})}
 var tagLink=function(t){return '<button class="lnk" data-tag="'+esc(t)+'">'+esc(t)+'</button>'};
+function jobVisible(j){
+  if(j.status!=='Done')return false;
+  if(!j.reqId)return true;
+  return !!closed[j.reqId]||!!removed[j.reqId]||!reqs.some(function(r){return r.id===j.reqId});
+}
 function jobOf(r){return jobs.find(function(x){return x.reqId===r.id})}
 function reqStatus(r){var jb=jobOf(r),c=closed[r.id];
-  return '<span class="pill '+(c?'ok':'soon')+'">'+(c?'Closed':'Open')+'</span>'+(c&&c.at?'<div class="dim">'+esc(c.at)+'</div>':'')+(jb?'<div class="dim">Job Order '+jb.no+': '+esc(jb.status)+'</div>':'')}
+  return '<span class="pill '+(c?'ok':'soon')+'">'+(c?'Closed':'Open')+'</span>'+(c&&c.at?'<div class="dim">'+esc(c.at)+'</div>':'')+(jb&&c?'<div class="dim">Job Order '+jb.no+': '+esc(jb.status)+'</div>':'')}
 function reqAct(r){if(closed[r.id])return canClose?'<button class="btn" data-ro="'+esc(r.id)+'">Open request</button>':'';
   var b=r.due?'<button class="btn" data-nt="'+esc(r.id)+'">Email</button> ':'';
   return b+(canClose?'<button class="btn pri" data-cl="'+esc(r.id)+'">Close request</button>':'<span class="dim">Only an authorised user can close it</span>')}
@@ -441,16 +446,26 @@ function closeFlow(id){
   if(jb&&jb.status==='Done'){formOpen=false;$('#dr').classList.remove('open');closeReq(id);return}
   jobForm(jb?{job:jb}:{tag:r.tag,notes:'Request '+r.no+': '+r.desc,reqId:r.id,step:r.step,hrs:r.e});
 }
-function fail(m){toast(m);var w=$('#warn');w.hidden=false;w.textContent=m}
+function fail(m){var w=$('#warn');w.hidden=false;w.textContent=m;alert(m)}
 async function closeReq(id,q){
   var r=await sb.rpc('close_request',{p_id:id});
-  if(r.error){fail('Could not close the request: '+r.error.message);return}
-  $('#warn').hidden=true;closed[id]={at:today()};drawAll();if(!q)toast('Request closed');
+  if(r.error){
+    var u=await sb.from('maintenance_requests').update({closed_at:today()}).eq('id',id).select();
+    if(u.error||!u.data||!u.data.length){fail('Could not close the request.\nFunction: '+r.error.message+'\nDirect update: '+(u.error?u.error.message:'changed 0 rows'));return}
+  }
+  var v=await sb.from('maintenance_requests').select('closed_at').eq('id',id).maybeSingle();
+  if(!v.data||!v.data.closed_at){fail('The server accepted the close, but the request is still open in the database.');return}
+  $('#warn').hidden=true;closed[id]={at:v.data.closed_at};drawAll();if(!q)toast('Request closed');
 }
 async function reopenReq(id){
   var r=await sb.rpc('reopen_request',{p_id:id});
-  if(r.error){fail('Could not reopen the request: '+r.error.message);return}
-  delete closed[id];drawAll();if($('#dr').classList.contains('open'))reqView(id);toast('Request reopened');
+  if(r.error){
+    var u=await sb.from('maintenance_requests').update({closed_at:null}).eq('id',id).select();
+    if(u.error||!u.data||!u.data.length){fail('Could not reopen the request.\nFunction: '+r.error.message+'\nDirect update: '+(u.error?u.error.message:'changed 0 rows'));return}
+  }
+  var v=await sb.from('maintenance_requests').select('closed_at').eq('id',id).maybeSingle();
+  if(v.data&&v.data.closed_at){fail('The server accepted it, but the request is still closed in the database.');return}
+  $('#warn').hidden=true;delete closed[id];drawAll();if($('#dr').classList.contains('open'))reqView(id);toast('Request reopened');
 }
 function reqView(id){
   var r=reqs.find(function(x){return x.id===id});if(!r)return;
@@ -480,7 +495,7 @@ function notify(o,mc){
 }
 function drawHome(){
   var v=$('#vHome');if(v.hidden)return;
-  var over=items.filter(function(i){return status(i).s==='over'}).length,op=vreqs().filter(function(r){return !closed[r.id]}),due=op.filter(function(r){return r.due}).length,done=jobs.filter(function(j){return j.status==='Done'}).length;
+  var over=items.filter(function(i){return status(i).s==='over'}).length,op=vreqs().filter(function(r){return !closed[r.id]}),due=op.filter(function(r){return r.due}).length,done=jobs.filter(jobVisible).length;
   var tile=function(t,n,l){return '<button class="tile" data-t="'+t+'"><b>'+n+'</b><span>'+l+'</span></button>'};
   v.innerHTML='<section class="hero"><h2>Keep every machine on its service schedule</h2><p>Track running hours, raise maintenance requests, and keep a clean record of every service and the spare parts changed.</p><div class="acts"><button class="btn pri" data-t="req">Maintenance requests</button><button class="btn" data-t="eq">Equipment</button></div></section><div class="stripe"></div><div class="tiles">'+tile('eq',items.length,'Machines')+tile('eq',over,'Overdue for service')+tile('req',due,'Open requests needing maintenance')+tile('req',op.length,'Open requests')+tile('log',done,'Services in the log')+'</div>';
 }
@@ -584,7 +599,7 @@ document.addEventListener('input',function(e){
 /* ---------- maintenance log export ---------- */
 function exportLog(){
   var q=($('#lq')?$('#lq').value:'').toLowerCase();
-  var rows=jobs.filter(function(j){return j.status==='Done'&&(!q||('job order '+j.no+' '+j.tag+' '+j.by+' '+(j.parts||[]).join(' ')).toLowerCase().indexOf(q)>-1)}).sort(function(a,b){return b.no-a.no});
+  var rows=jobs.filter(function(j){return jobVisible(j)&&(!q||('job order '+j.no+' '+j.tag+' '+j.by+' '+(j.parts||[]).join(' ')).toLowerCase().indexOf(q)>-1)}).sort(function(a,b){return b.no-a.no});
   if(!rows.length){toast('No job orders to export');return}
   var qt=function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'};
   var head=['Job order','Date','Machine tag','Equipment type','Service step (h)','Cycle','Hours at service','Parts changed','Requested by','Done by','Notes','Status'];
